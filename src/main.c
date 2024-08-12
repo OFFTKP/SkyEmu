@@ -6170,7 +6170,10 @@ void se_draw_menu_panel(){
     &gui_state.settings.draw_leaderboard_trackers,
     &gui_state.settings.draw_challenge_indicators,
   };
-  retro_achievements_draw_settings(checkboxes);
+  bool login_pressed = retro_achievements_draw_settings(checkboxes);
+  if(login_pressed){
+    gui_state.settings.ra_needs_reload = true;
+  }
   #endif
   {
     se_bios_info_t * info = &gui_state.bios_info;

@@ -31,7 +31,7 @@ void retro_achievements_frame();
 
 void retro_achievements_draw_panel();
 
-void retro_achievements_draw_settings(uint32_t* draw_checkboxes[5]);
+bool retro_achievements_draw_settings(uint32_t* draw_checkboxes[5]);
 
 void retro_achievements_update_atlases();
 

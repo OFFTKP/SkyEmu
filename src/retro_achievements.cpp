@@ -497,7 +497,6 @@ namespace
             path += "ra_token.txt";
 
             sb_save_file_data(path.c_str(), (const uint8_t*)data.data(), data.size());
-            retro_achievements_load_game();
             se_emscripten_flush_fs();
             ra_state->error_message.store(nullptr);
         } else {
@@ -1083,7 +1082,7 @@ bool retro_achievements_load_game()
 
     const rc_client_user_t* user = rc_client_get_user_info(ra_state->rc_client);
     if (!user)
-        return true; // not logged in or login in progress, in which case the game will be loaded
+        return false; // not logged in or login in progress, in which case the game will be loaded
                      // when the login is done
 
     if (ra_state->game_state && ra_state->game_state->outstanding_requests.load() != 0)
@@ -1234,8 +1233,9 @@ bool retro_achievements_has_game_loaded(){
     return rc_client_get_game_info(ra_state->rc_client)!=NULL;
 }
 
-void retro_achievements_draw_settings(uint32_t* draw_checkboxes[5])
+bool retro_achievements_draw_settings(uint32_t* draw_checkboxes[5])
 {
+    bool login_pressed = false;
     int win_w = igGetWindowContentRegionWidth();
     const rc_client_user_t* user = rc_client_get_user_info(ra_state->rc_client);
     igPushIDStr("RetroAchievements");
@@ -1268,6 +1268,7 @@ void retro_achievements_draw_settings(uint32_t* draw_checkboxes[5])
         if (se_button(ICON_FK_SIGN_IN " Login", ImVec2{0, 0}) || enter)
         {
             retro_achievements_login(username, password);
+            login_pressed = true;
         }
         if (pending_login)
             se_pop_disabled();
@@ -1319,6 +1320,7 @@ void retro_achievements_draw_settings(uint32_t* draw_checkboxes[5])
         for (int i = 0; i < 5; i++)*draw_checkboxes[i] = draw_checkboxes_bool[i];
     }
     igPopID();
+    return login_pressed;
 }
 void retro_achievements_draw_panel()
 {
