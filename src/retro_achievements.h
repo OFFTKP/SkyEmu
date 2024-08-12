@@ -37,7 +37,7 @@ void retro_achievements_update_atlases();
 
 void retro_achievements_keep_alive();
 
-void retro_achievements_draw_notifications(float left, float top);
+void retro_achievements_draw_notifications(float left, float top, float screen_width);
 
 void retro_achievements_draw_progress_indicator(float right, float top);
 

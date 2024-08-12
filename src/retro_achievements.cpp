@@ -1336,7 +1336,7 @@ float easeOutBack(float t) {
     return 1 + c3 * (t1 * t1 * t1) + c1 * (t1 * t1);
 }
 
-void retro_achievements_draw_notifications(float left, float top)
+void retro_achievements_draw_notifications(float left, float top, float screen_width)
 {
     ra_game_state_ptr game_state = ra_state->game_state;
 
@@ -1384,25 +1384,26 @@ void retro_achievements_draw_notifications(float left, float top)
         if (easing < 0.97f)
             continue;
 
-        float padding_adj = padding * easing;
-
 #define ALPHA(x) ((uint32_t)(multiplier * x) << 24)
 
-        float image_width = 64 * easing;
-        float image_height = 64 * easing;
+        float padding_adj = 0.01 * screen_width * easing;
+        float image_width = screen_width * 0.05f * easing;
+        float image_height = screen_width * 0.05f * easing;
         float placard_width =
-            padding_adj + 300 * easing + padding_adj; // notifications that have the same width are more appealing
+            padding_adj + screen_width * 0.30f * easing + padding_adj; // notifications that have the same width are more appealing
         float wrap_width = placard_width - padding_adj * 2 - image_width;
+        float title_font_size = 0.02f * screen_width * easing;
+        float submessage_font_size = 0.015f * screen_width * easing;
 
         float title_height = 0, submessage_height = 0;
 
         ImVec2 out;
         ImFont* font = igGetFont();
-        ImFont_CalcTextSizeA(&out, font, 22.0f * easing, std::numeric_limits<float>::max(), wrap_width,
+        ImFont_CalcTextSizeA(&out, font, title_font_size, std::numeric_limits<float>::max(), wrap_width,
                              notification.submessage.c_str(), NULL, NULL);
         title_height = out.y;
 
-        ImFont_CalcTextSizeA(&out, font, 18.0f * easing, std::numeric_limits<float>::max(), wrap_width,
+        ImFont_CalcTextSizeA(&out, font, submessage_font_size, std::numeric_limits<float>::max(), wrap_width,
                              notification.submessage2.c_str(), NULL, NULL);
         submessage_height = out.y;
 
@@ -1453,11 +1454,11 @@ void retro_achievements_draw_notifications(float left, float top)
             text_alpha *= easing;
 
             ImDrawList_AddTextFontPtr(
-                ig, igGetFont(), 22.0f * easing,
+                ig, igGetFont(), title_font_size,
                 ImVec2{top_left.x + padding_adj + image_width + padding_adj, top_left.y + padding_adj},
                 0xffffff | ALPHA(text_alpha), notification.submessage.c_str(), NULL, wrap_width, NULL);
             ImDrawList_AddTextFontPtr(
-                ig, igGetFont(), 18.0f * easing,
+                ig, igGetFont(), submessage_font_size,
                 ImVec2{top_left.x + padding_adj + image_width + padding_adj, top_left.y + padding_adj + title_height + padding_adj},
                 0xc0c0c0 | ALPHA(text_alpha), notification.submessage2.c_str(), NULL, wrap_width, NULL);
         } else {
@@ -1469,11 +1470,11 @@ void retro_achievements_draw_notifications(float left, float top)
                 text_alpha = (255 * text_time) / text_half_time;
             }
             text_alpha *= easing;
-            ImFont_CalcTextSizeA(&out, font, 22.0f * easing, std::numeric_limits<float>::max(), wrap_width,
+            ImFont_CalcTextSizeA(&out, font, title_font_size, std::numeric_limits<float>::max(), wrap_width,
                              notification.title.c_str(), NULL, NULL);
             title_height = out.y;
-            ImDrawList_AddTextFontPtr(ig, igGetFont(), 22.0f * easing,
-                ImVec2{top_left.x + padding_adj + image_width + padding_adj, top_left.y + image_height / 2 - title_height / 2},
+            ImDrawList_AddTextFontPtr(ig, igGetFont(), title_font_size,
+                ImVec2{top_left.x + padding_adj + image_width + padding_adj, top_left.y + + padding_adj},
                 0xffffff | ALPHA(text_alpha), notification.title.c_str(), NULL,
                 wrap_width, NULL);
         }

@@ -7209,10 +7209,10 @@ static void frame(void) {
     float top = menu_height;
     float right = screen_x+screen_width/se_dpi_scale();
     float bottom = height/se_dpi_scale();
-    float padding = 30;
+    float padding = screen_width * 0.02;
 
     if (gui_state.settings.draw_notifications)
-      retro_achievements_draw_notifications(left+padding,top+padding);
+      retro_achievements_draw_notifications(left+padding,top+padding,screen_width);
 
     if (gui_state.settings.draw_progress_indicators)
       retro_achievements_draw_progress_indicator(right-padding,top+padding);
