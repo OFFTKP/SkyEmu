@@ -6328,17 +6328,104 @@ void se_draw_menu_panel(){
   }
   #ifdef ENABLE_RETRO_ACHIEVEMENTS
   se_section(ICON_FK_TROPHY " Retro Achievements");
-  uint32_t* checkboxes[5] = {
-    &gui_state.settings.hardcore_mode,
-    &gui_state.settings.draw_notifications,
-    &gui_state.settings.draw_progress_indicators,
-    &gui_state.settings.draw_leaderboard_trackers,
-    &gui_state.settings.draw_challenge_indicators,
-  };
-  bool login_pressed = retro_achievements_draw_settings(checkboxes);
-  if(login_pressed){
-    gui_state.settings.ra_needs_reload = true;
+  const rc_client_user_t* user = rc_client_get_user_info(retro_achievements_get_client());
+  igPushIDStr("RetroAchievements");
+  if (!user)
+  {
+      static char username[256] = {0};
+      static char password[256] = {0};
+      bool pending_login = retro_achievements_is_pending_login();
+      se_text("Username");
+      igSameLine(win_w - 150, 0);
+      if (pending_login)
+          se_push_disabled();
+      bool enter = igInputText("##Username", username, sizeof(username),
+                        ImGuiInputTextFlags_EnterReturnsTrue, NULL, NULL);
+      if (pending_login)
+          se_pop_disabled();
+      se_text("Password");
+      igSameLine(win_w - 150, 0);
+      if (pending_login)
+          se_push_disabled();
+      enter |= igInputText("##Password", password, sizeof(password),
+                        ImGuiInputTextFlags_Password | ImGuiInputTextFlags_EnterReturnsTrue,
+                        NULL, NULL);
+      const char* error_message = retro_achievements_get_login_error();
+      if (error_message) {
+        igPushStyleColorVec4(ImGuiCol_Text, (ImVec4){1.0f, 0.0f, 0.0f, 1.0f});
+        se_text("%s", error_message);
+        igPopStyleColor(1);
+      }
+      if (se_button(ICON_FK_SIGN_IN " Login", (ImVec2){0, 0}) || enter)
+      {
+        retro_achievements_login(username, password);
+        gui_state.settings.ra_needs_reload = true;
+      }
+      if (pending_login)
+        se_pop_disabled();
+  }else{
+      const rc_client_game_t* game = rc_client_get_game_info(retro_achievements_get_client());
+      ImVec2 pos;
+      sg_image image = {SG_INVALID_ID};
+      ImVec2 offset1 = {0, 0};
+      ImVec2 offset2 = {1, 1};
+      const char* play_string = "No Game Loaded";
+      char line1[256];
+      char line2[256];
+      snprintf(line1, 256, se_localize_and_cache("Logged in as %s"), user->display_name);
+      atlas_tile_t* game_image = retro_achievements_get_game_image();
+      if (game && game_image)
+      {
+        image.id = game_image->atlas_id;
+        offset1 = (ImVec2){game_image->x1, game_image->y1};
+        offset2 = (ImVec2){game_image->x2, game_image->y2};
+        snprintf(line2, 256, se_localize_and_cache("Playing: %s"), game->title);
+      }
+      else
+      {
+        snprintf(line2, 256, "%s", se_localize_and_cache("No Game Loaded"));
+      }
+      se_boxed_image_triple_label(line1, line2, NULL, 0, ICON_FK_TROPHY, image, 0, offset1, offset2, false);
+      if (se_button(ICON_FK_SIGN_OUT " Logout", (ImVec2){0, 0}))
+      {
+        char buffer[SB_FILE_PATH_SIZE];
+        snprintf(buffer, SB_FILE_PATH_SIZE, "%sra_token.txt", se_get_pref_path());
+        remove(buffer);
+        rc_client_logout(retro_achievements_get_client());
+      }
+
+      bool draw_checkboxes_bool[5] = {
+        gui_state.settings.hardcore_mode,
+        gui_state.settings.draw_notifications,
+        gui_state.settings.draw_progress_indicators,
+        gui_state.settings.draw_leaderboard_trackers,
+        gui_state.settings.draw_challenge_indicators,
+      };
+
+      if (se_checkbox("Enable Hardcore Mode", &draw_checkboxes_bool[0]))
+      {
+        rc_client_set_hardcore_enabled(retro_achievements_get_client(), draw_checkboxes_bool[0]);
+      }
+
+      se_checkbox("Enable Notifications", &draw_checkboxes_bool[1]);
+      se_checkbox("Enable Progress Indicators",&draw_checkboxes_bool[2]);
+      se_checkbox("Enable Leaderboard Trackers",&draw_checkboxes_bool[3]);
+      se_checkbox("Enable Challenge Indicators",&draw_checkboxes_bool[4]);
+
+      uint32_t* checkboxes[5] = {
+        &gui_state.settings.hardcore_mode,
+        &gui_state.settings.draw_notifications,
+        &gui_state.settings.draw_progress_indicators,
+        &gui_state.settings.draw_leaderboard_trackers,
+        &gui_state.settings.draw_challenge_indicators,
+      };
+
+      for (int i = 0; i < 5; i++)
+      {
+        *checkboxes[i] = draw_checkboxes_bool[i];
+      }
   }
+  igPopID();
   #endif
   {
     se_bios_info_t * info = &gui_state.bios_info;

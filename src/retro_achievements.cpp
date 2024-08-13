@@ -172,7 +172,7 @@ struct ra_state_t
     sb_emu_state_t* emu_state = nullptr;
     rc_client_t* rc_client = nullptr;
 
-    bool pending_login = false;
+    std::atomic_bool pending_login = { false };
 
     // Game state is a shared_ptr. This is because there's a lot of asynchronous http requests
     // referring to it so every time we need to create such a request, we make a copy of the
@@ -1169,6 +1169,21 @@ void retro_achievements_login(const char* username, const char* password)
                                         retro_achievements_login_callback, ra_state);
 }
 
+bool retro_achievements_is_pending_login()
+{
+    return ra_state->pending_login;
+}
+
+const char* retro_achievements_get_login_error()
+{
+    return ra_state->error_message.load();
+}
+
+struct rc_client_t* retro_achievements_get_client()
+{
+    return ra_state->rc_client;
+}
+
 void retro_achievements_keep_alive()
 {
     static uint64_t last_time = 0;
@@ -1188,10 +1203,11 @@ void retro_achievements_keep_alive()
 
 atlas_tile_t* retro_achievements_get_game_image()
 {
-    if (!ra_state->game_state)
+    ra_game_state_ptr game_state = ra_state->game_state;
+    if (!game_state)
         return nullptr;
 
-    return ra_state->game_state->game_image;
+    return game_state->game_image;
 }
 
 void retro_achievements_update_atlases()
@@ -1269,98 +1285,8 @@ bool retro_achievements_has_game_loaded(){
     return rc_client_get_game_info(ra_state->rc_client)!=NULL;
 }
 
-bool retro_achievements_draw_settings(uint32_t* draw_checkboxes[5])
-{
-    bool login_pressed = false;
-    int win_w = igGetWindowContentRegionWidth();
-    const rc_client_user_t* user = rc_client_get_user_info(ra_state->rc_client);
-    igPushIDStr("RetroAchievements");
-    if (!user)
-    {
-        static char username[256] = {0};
-        static char password[256] = {0};
-        bool pending_login = ra_state->pending_login;
-        se_text("Username");
-        igSameLine(win_w - 150, 0);
-        if (pending_login)
-            se_push_disabled();
-        bool enter = igInputText("##Username", username, sizeof(username),
-                                 ImGuiInputTextFlags_EnterReturnsTrue, NULL, NULL);
-        if (pending_login)
-            se_pop_disabled();
-        se_text("Password");
-        igSameLine(win_w - 150, 0);
-        if (pending_login)
-            se_push_disabled();
-        enter |= igInputText("##Password", password, sizeof(password),
-                             ImGuiInputTextFlags_Password | ImGuiInputTextFlags_EnterReturnsTrue,
-                             NULL, NULL);
-        const char* error_message = ra_state->error_message.load();
-        if (error_message) {
-            igPushStyleColorVec4(ImGuiCol_Text, ImVec4{1.0f, 0.0f, 0.0f, 1.0f});
-            se_text("%s", error_message);
-            igPopStyleColor(1);
-        }
-        if (se_button(ICON_FK_SIGN_IN " Login", ImVec2{0, 0}) || enter)
-        {
-            retro_achievements_login(username, password);
-            login_pressed = true;
-        }
-        if (pending_login)
-            se_pop_disabled();
-    }else{
-        const rc_client_game_t* game = rc_client_get_game_info(ra_state->rc_client);
-        ImVec2 pos;
-        sg_image image = {SG_INVALID_ID};
-        ImVec2 offset1 = {0, 0};
-        ImVec2 offset2 = {1, 1};
-        const char* play_string = "No Game Loaded";
-        char line1[256];
-        char line2[256];
-        snprintf(line1, 256, se_localize_and_cache("Logged in as %s"), user->display_name);
-        atlas_tile_t* game_image = retro_achievements_get_game_image();
-        if (game && game_image)
-        {
-            image.id = game_image->atlas_id;
-            offset1 = ImVec2{game_image->x1, game_image->y1};
-            offset2 = ImVec2{game_image->x2, game_image->y2};
-            snprintf(line2, 256, se_localize_and_cache("Playing: %s"), game->title);
-        }
-        else
-            snprintf(line2, 256, "%s", se_localize_and_cache("No Game Loaded"));
-        se_boxed_image_triple_label(line1, line2, NULL, 0, ICON_FK_TROPHY, image, 0, offset1, offset2, false);
-        if (se_button(ICON_FK_SIGN_OUT " Logout", ImVec2{0, 0}))
-        {
-            std::string path = se_get_pref_path();
-            path += "ra_token.txt";
-            
-            ::remove(path.c_str());
-            rc_client_logout(ra_state->rc_client);
-        }
-
-        // This is done this way to be able to only use uint32_t on persistent_settings_t, while also using
-        // bool for imgui stuff since that's what it needs and not resorting to type punning
-        bool draw_checkboxes_bool[5];
-        for (int i = 0; i < 5; i++) draw_checkboxes_bool[i] = *draw_checkboxes[i];
-
-        if (se_checkbox("Enable Hardcore Mode", &draw_checkboxes_bool[0]))
-        {
-            rc_client_set_hardcore_enabled(ra_state->rc_client, draw_checkboxes_bool[0]);
-        }
-
-        se_checkbox("Enable Notifications", &draw_checkboxes_bool[1]);
-        se_checkbox("Enable Progress Indicators",&draw_checkboxes_bool[2]);
-        se_checkbox("Enable Leaderboard Trackers",&draw_checkboxes_bool[3]);
-        se_checkbox("Enable Challenge Indicators",&draw_checkboxes_bool[4]);
-
-        for (int i = 0; i < 5; i++)*draw_checkboxes[i] = draw_checkboxes_bool[i];
-    }
-    igPopID();
-    return login_pressed;
-}
 void retro_achievements_draw_panel()
 {
-    const rc_client_user_t* user = rc_client_get_user_info(ra_state->rc_client);
     igPushIDStr("RetroAchievementsPanel");
     retro_achievements_draw_achievements();
     igPopID();
