@@ -738,6 +738,34 @@ static bool se_button_themed(int region, const char* label, ImVec2 size, bool al
   *style = restore_style; 
   return button_result;
 }
+uint32_t se_hsv_to_rgb(uint16_t H, uint8_t S, uint8_t V) {
+	float r, g, b;
+	
+	float h = (float)H / 360;
+	float s = (float)S / 100;
+	float v = (float)V / 100;
+	
+	int i = floor(h * 6);
+	float f = h * 6 - i;
+	float p = v * (1 - s);
+	float q = v * (1 - f * s);
+	float t = v * (1 - (1 - f) * s);
+	
+	switch (i % 6) {
+		case 0: r = v, g = t, b = p; break;
+		case 1: r = q, g = v, b = p; break;
+		case 2: r = p, g = v, b = t; break;
+		case 3: r = p, g = q, b = v; break;
+		case 4: r = t, g = p, b = v; break;
+		case 5: r = v, g = p, b = q; break;
+	}
+	
+	uint8_t r8 = r * 255;
+  uint8_t g8 = g * 255;
+  uint8_t b8 = b * 255;
+	
+	return b8 << 16 | g8 << 8 | r8;
+}
 bool se_slider_float_themed(const char* label, float* p_data, float p_min, float p_max, const char* format){
   if(igGetCurrentWindow()->SkipItems)return false;
 
@@ -4481,7 +4509,7 @@ void se_draw_glow(ImVec2 center){
   }
 }
 
-void se_boxed_image_dual_label(const char * first_label, const char* second_label, const char* box, sg_image image, int reduce_width, ImVec2 uv0, ImVec2 uv1, bool glow){
+void se_boxed_image_triple_label(const char * first_label, const char* second_label, const char* third_label, uint32_t third_label_color, const char* box, sg_image image, int reduce_width, ImVec2 uv0, ImVec2 uv1, bool glow){
   ImVec2 win_min,win_sz,win_max;
   win_min.x=0;
   win_min.y=0;                                  // content boundaries min (roughly (0,0)-Scroll), in window coordinates
@@ -4497,28 +4525,74 @@ void se_boxed_image_dual_label(const char * first_label, const char* second_labe
   igGetCursorScreenPos(&screen_pos);
 
   float disp_y_min = igGetCursorPosY();
-  float disp_y_max = disp_y_min+item_height+padding*2;
+  int box_h = item_height-padding*2;
+  int box_w = box_h;
+  ImVec2 curr_pos; 
+  igGetCursorPos(&curr_pos);
+  ImVec2 next_pos=curr_pos;
+  curr_pos.y+=padding; 
+  igSetCursorPos(curr_pos);
+
+  ImGuiStyle* style = igGetStyle();
+  int scrollbar_width = style->ScrollbarSize;
+  int wrap_width = win_sz.x-curr_pos.x-box_w-padding*2-scrollbar_width;
+
+  ImVec2 out;
+  igCalcTextSize(&out,first_label,NULL,false,wrap_width);
+
+  ImVec2 out2;
+  igCalcTextSize(&out2,second_label,NULL,false,wrap_width);
+
+  ImVec2 out3 = {0, 0};
+  if(third_label)igCalcTextSize(&out3,third_label,NULL,false,wrap_width);
+
+  float text_height = out.y + out2.y + out3.y;
+  if (text_height+padding*2 > box_h+padding*2)
+    next_pos.y+=text_height+padding*2;
+  else
+    next_pos.y+=box_h+padding*2;
+
+  float disp_y_max = next_pos.y;
+
   //Early out if not visible (helps for long lists)
   if(disp_y_max<win_min.y||disp_y_min>win_max.y){
     igSetCursorPosY(disp_y_max);
     return;
   }
-  int box_h = item_height-padding*2;
-  int box_w = box_h;
-  igPushIDStr(second_label);
-  ImVec2 curr_pos; 
-  igGetCursorPos(&curr_pos);
-  ImVec2 next_pos=curr_pos;
-  next_pos.y+=box_h+padding*2;
-  curr_pos.y+=padding; 
-  igSetCursorPos(curr_pos);
 
+  // Draw a rectangle to show the text size
+  // ImDrawList* ig = igGetWindowDrawList();
+  // ImVec2 top_left = {screen_pos.x+box_w+padding,screen_pos.y};
+
+  // float max_x = out.x > out2.x ? out.x : out2.x;
+
+  // ImVec2 bottom_right = {screen_pos.x+max_x+box_w,screen_pos.y+out.y+out2.y};
+  // ImDrawList_AddRect(ig, top_left, bottom_right, 0xff0000ff, 0, 0, 1.0f);
+
+  igPushIDStr(second_label);
   igSetCursorPosX(curr_pos.x+box_w+padding);
   igSetCursorPosY(curr_pos.y-padding);
   se_text("%s", first_label);
   igSetCursorPosX(curr_pos.x+box_w+padding);
   igSetCursorPosY(igGetCursorPosY()-5);
   se_text_disabled("%s", second_label);
+  if(third_label){
+    igPushStyleColorU32(ImGuiCol_Text,third_label_color);
+    igSetCursorPosX(curr_pos.x+box_w+padding);
+    igSetCursorPosY(igGetCursorPosY()-5);
+    ImDrawList* ig = igGetWindowDrawList();
+    int vert_start = ig->VtxBuffer.Size;
+    se_text("%s", third_label);
+    if (third_label_color == 0xff000000) { // black means rainbow
+      int vert_end = ig->VtxBuffer.Size;
+      int h = (uint64_t)(stm_now() / 10000000.0) % 360;
+      for (int i = vert_start; i < vert_end; i++) {
+        h+=5;
+        ig->VtxBuffer.Data[i].col = 0xff000000 + se_hsv_to_rgb(h, 40, 100);
+      }
+    }
+    igPopStyleColor(1);
+  }
   if (glow)se_draw_glow((ImVec2){screen_pos.x+box_w*0.5,screen_pos.y+box_h*0.5+padding});
   igSetCursorPos(curr_pos);
   if(image.id != SG_INVALID_ID)igImageButton((ImTextureID)(intptr_t)image.id,(ImVec2){box_w,box_h},uv0,uv1,0,(ImVec4){1,1,1,1},(ImVec4){1,1,1,1});

@@ -9,7 +9,7 @@ const char* se_get_pref_path();
 void se_push_disabled();
 void se_pop_disabled();
 void se_text(const char* fmt, ...);
-void se_boxed_image_dual_label(const char* title, const char* description, const char* icon,
+void se_boxed_image_triple_label(const char* first_label, const char* second_label, const char* third_label, uint32_t third_label_color, const char* icon,
                                sg_image image, int flags, ImVec2 uv0, ImVec2 uv1, bool glow);
 bool se_button(const char* label, ImVec2 size);
 bool se_checkbox(const char* label, bool * v);
@@ -35,6 +35,7 @@ double se_time();
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <iomanip>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -753,8 +754,25 @@ namespace
                 bool unlocked = bucket->bucket_id == RC_CLIENT_ACHIEVEMENT_BUCKET_RECENTLY_UNLOCKED ||
                                 bucket->bucket_id == RC_CLIENT_ACHIEVEMENT_BUCKET_UNLOCKED;
                 bool glow = rarity < 10.0f && unlocked; // glow if less than 10% of players have it and you have it too
-                se_boxed_image_dual_label(achievement->title.c_str(),
-                                          achievement->description.c_str(), ICON_FK_SPINNER, image,
+                std::stringstream stream;
+                stream << std::fixed << std::setprecision(2) << rarity;
+                std::string players = stream.str() + "% of players have this achievement";
+
+                uint32_t color;
+                if (rarity > 50) {
+                    color = 0xff8fdba4;
+                } else if (rarity > 25) {
+                    color = 0xffd49a8a;
+                } else if (rarity > 10) {
+                    color = 0xffcc85bb;
+                } else if (rarity > 5) {
+                    color = 0xff71b0e3;
+                } else {
+                    color = 0xff000000; // rainbow
+                }
+
+                se_boxed_image_triple_label(achievement->title.c_str(),
+                                          achievement->description.c_str(), players.c_str(), color, ICON_FK_SPINNER, image,
                                           0, uv0, uv1, glow);
             }
         }
@@ -1305,7 +1323,7 @@ bool retro_achievements_draw_settings(uint32_t* draw_checkboxes[5])
         }
         else
             snprintf(line2, 256, "%s", se_localize_and_cache("No Game Loaded"));
-        se_boxed_image_dual_label(line1, line2, ICON_FK_TROPHY, image, 0, offset1, offset2, false);
+        se_boxed_image_triple_label(line1, line2, NULL, 0, ICON_FK_TROPHY, image, 0, offset1, offset2, false);
         if (se_button(ICON_FK_SIGN_OUT " Logout", ImVec2{0, 0}))
         {
             std::string path = se_get_pref_path();
