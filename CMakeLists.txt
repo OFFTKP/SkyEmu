@@ -342,7 +342,7 @@ if(ENABLE_RETRO_ACHIEVEMENTS)
     src/rcheevos/src/rurl/url.c
   )
   set(SKYEMU_SRC ${SKYEMU_SRC} ${RCHEEVOS_SRC} src/retro_achievements.cpp)
-  include_directories(src/rcheevos/include)
+  include_directories(src/rcheevos/include src/lua)
 endif()
 
 if(IOS)
