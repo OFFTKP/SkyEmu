@@ -759,13 +759,13 @@ namespace
                 std::string players = stream.str() + "% of players have this achievement";
 
                 uint32_t color;
-                if (rarity > 50) {
+                if (rarity > 30.0f) {
                     color = 0xff8fdba4;
-                } else if (rarity > 25) {
+                } else if (rarity > 20.0f) {
                     color = 0xffd49a8a;
-                } else if (rarity > 10) {
+                } else if (rarity > 5.0f) {
                     color = 0xffcc85bb;
-                } else if (rarity > 5) {
+                } else if (rarity > 1.5f) {
                     color = 0xff71b0e3;
                 } else {
                     color = 0xff000000; // rainbow
