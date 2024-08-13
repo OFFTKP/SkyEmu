@@ -350,7 +350,15 @@ typedef struct{
 #define SE_NO_SORT 0
 #define SE_SORT_ALPHA_ASC 1
 #define SE_SORT_ALPHA_DESC 2
-
+#define SE_RAY_COUNT 100
+struct {
+  float distance;
+  float velocity;
+  float angle;
+  float angle_velocity;
+  float alpha;
+  float alpha_velocity;
+} glow_rays[SE_RAY_COUNT];
 typedef struct{
   uint16_t start_pixel;
   uint16_t end_pixel;
@@ -4397,8 +4405,83 @@ bool se_selectable_with_box(const char * first_label, const char* second_label, 
 #endif
   return clicked; 
 }
+void se_update_glow(){
+  const float pi_180 = 3.14159265358979323846f / 180.0f;
+  for(int i = 0; i < SE_RAY_COUNT; i++) {
+    glow_rays[i].angle += glow_rays[i].angle_velocity;
+    if (glow_rays[i].angle > 360) {
+      glow_rays[i].angle -= 360;
+    }
+    glow_rays[i].distance += glow_rays[i].velocity;
+    if (glow_rays[i].distance < 20) {
+      glow_rays[i].distance = 30;
+      glow_rays[i].velocity = 0.1f + (float)(rand() % 10) / 10.0f;
+    } else if (glow_rays[i].distance > 40) {
+      glow_rays[i].distance = 40;
+      glow_rays[i].velocity = -0.1f - (float)(rand() % 10) / 10.0f;
+    }
+    glow_rays[i].alpha += glow_rays[i].alpha_velocity;
+    if (glow_rays[i].alpha < 0.4f) {
+      glow_rays[i].alpha = 0.4f;
+      glow_rays[i].alpha_velocity = 0.0015f + (float)(rand() % 10) / 1000.0f;
+    } else if (glow_rays[i].alpha > 0.95f) {
+      glow_rays[i].alpha = 0.95f;
+      glow_rays[i].alpha_velocity = -0.0015f - (float)(rand() % 10) / 1000.0f;
+    }
+  }
+}
+void se_draw_glow(ImVec2 center){
+  const float pi_180 = 3.14159265358979323846f / 180.0f;
+  ImDrawList* ig = igGetWindowDrawList();
+  for (int i = 0; i < SE_RAY_COUNT; i++) {
+    float angle = glow_rays[i].angle;
+    float distance = glow_rays[i].distance;
+    float distance_2 = distance / 3;
+    float distance_x = distance * cosf(angle * pi_180);
+    float distance_y = distance * sinf(angle * pi_180);
 
-void se_boxed_image_dual_label(const char * first_label, const char* second_label, const char* box, sg_image image, int reduce_width, ImVec2 uv0, ImVec2 uv1){
+    // Keep the distance within a square
+    if (distance_x > 30) {
+      distance_x = 30;
+    } else if (distance_x < -30) {
+      distance_x = -30;
+    }
+
+    if (distance_y > 30) {
+      distance_y = 30;
+    } else if (distance_y < -30) {
+      distance_y = -30;
+    }
+
+    ImVec2 ray_center = center;
+    ImVec2 target = {ray_center.x + distance_x, ray_center.y + distance_y};
+    ray_center.x += distance_x / 1.5;
+    ray_center.y += distance_y / 1.5;
+
+    ImVec2 target_1 = {ray_center.x + distance_2 * cosf((angle + 70) * pi_180),
+                            ray_center.y + distance_2 * sinf((angle + 70) * pi_180)};
+    ImVec2 target_2 = {ray_center.x + distance_2 * cosf((angle - 70) * pi_180),
+                            ray_center.y + distance_2 * sinf((angle - 70) * pi_180)};
+
+    int vert_start = ig->VtxBuffer.Size;
+    ImDrawList_PathLineTo(ig, ray_center);
+    ImDrawList_PathLineTo(ig, target_1);
+    ImDrawList_PathLineTo(ig, target);
+    ImDrawList_PathLineTo(ig, target_2);
+    ImDrawList_PathFillConvex(ig, 0);
+
+    ImDrawVert* vert = ig->VtxBuffer.Data + vert_start;
+    vert->col = 0x8ffffd | ((uint32_t)(glow_rays[i].alpha * 255) << 24);
+    vert++;
+    vert->col = 0;
+    vert++;
+    vert->col = 0;
+    vert++;
+    vert->col = 0;
+  }
+}
+
+void se_boxed_image_dual_label(const char * first_label, const char* second_label, const char* box, sg_image image, int reduce_width, ImVec2 uv0, ImVec2 uv1, bool glow){
   ImVec2 win_min,win_sz,win_max;
   win_min.x=0;
   win_min.y=0;                                  // content boundaries min (roughly (0,0)-Scroll), in window coordinates
@@ -4409,6 +4492,9 @@ void se_boxed_image_dual_label(const char * first_label, const char* second_labe
 
   int item_height = 50; 
   int padding = 4; 
+
+  ImVec2 screen_pos;
+  igGetCursorScreenPos(&screen_pos);
 
   float disp_y_min = igGetCursorPosY();
   float disp_y_max = disp_y_min+item_height+padding*2;
@@ -4433,6 +4519,7 @@ void se_boxed_image_dual_label(const char * first_label, const char* second_labe
   igSetCursorPosX(curr_pos.x+box_w+padding);
   igSetCursorPosY(igGetCursorPosY()-5);
   se_text_disabled("%s", second_label);
+  if (glow)se_draw_glow((ImVec2){screen_pos.x+box_w*0.5,screen_pos.y+box_h*0.5+padding});
   igSetCursorPos(curr_pos);
   if(image.id != SG_INVALID_ID)igImageButton((ImTextureID)(intptr_t)image.id,(ImVec2){box_w,box_h},uv0,uv1,0,(ImVec4){1,1,1,1},(ImVec4){1,1,1,1});
   else se_text_centered_in_box((ImVec2){0,0}, (ImVec2){box_w,box_h},box);
@@ -7173,6 +7260,7 @@ static void frame(void) {
       igSetNextWindowPos((ImVec2){screen_x,menu_height}, ImGuiCond_Always, (ImVec2){0,0});
       igSetNextWindowSize((ImVec2){sidebar_w, (gui_state.screen_height-menu_height*se_dpi_scale())/se_dpi_scale()}, ImGuiCond_Always);
       igBegin(se_localize_and_cache(ICON_FK_TROPHY " Retro Achievements"),&gui_state.retro_achievements_sidebar_open, ImGuiWindowFlags_NoCollapse|ImGuiWindowFlags_NoResize);
+      se_update_glow();
       retro_achievements_draw_panel();
       igEnd();
       screen_x += sidebar_w;
@@ -8027,6 +8115,14 @@ static void init(void) {
 #ifdef SE_PLATFORM_ANDROID
   se_android_request_permissions();
   #endif
+  for (int i = 0; i < SE_RAY_COUNT; i++) {
+    glow_rays[i].distance = 30 + (float)(rand() % 30);
+    glow_rays[i].velocity = 0.1f + (float)(rand() % 100) / 100.0f;
+    glow_rays[i].angle = (float)(rand() % 360);
+    glow_rays[i].angle_velocity = 0.1f + (float)(rand() % 10) / 100.0f;
+    glow_rays[i].alpha = 0.5f + (float)(rand() % 5) / 10.0f;
+    glow_rays[i].alpha_velocity = 0.1f + (float)(rand() % 10) / 10.0f;
+  }
 }
 static void cleanup(void) {
   simgui_shutdown();

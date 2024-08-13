@@ -10,7 +10,7 @@ void se_push_disabled();
 void se_pop_disabled();
 void se_text(const char* fmt, ...);
 void se_boxed_image_dual_label(const char* title, const char* description, const char* icon,
-                               sg_image image, int flags, ImVec2 uv0, ImVec2 uv1);
+                               sg_image image, int flags, ImVec2 uv0, ImVec2 uv1, bool glow);
 bool se_button(const char* label, ImVec2 size);
 bool se_checkbox(const char* label, bool * v);
 void se_section(const char* label,...);
@@ -31,6 +31,7 @@ double se_time();
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -80,6 +81,9 @@ struct ra_achievement_t
     uint32_t id;
     std::string title;
     std::string description;
+    float percentage;
+    float rarity;
+    float rarity_hardcore;
 };
 
 struct ra_bucket_t
@@ -743,9 +747,15 @@ namespace
                 }
 
                 const auto& achievement = bucket->achievements[j];
+                float rarity = rc_client_get_hardcore_enabled(ra_state->rc_client)
+                                   ? achievement->rarity_hardcore
+                                   : achievement->rarity;
+                bool unlocked = bucket->bucket_id == RC_CLIENT_ACHIEVEMENT_BUCKET_RECENTLY_UNLOCKED ||
+                                bucket->bucket_id == RC_CLIENT_ACHIEVEMENT_BUCKET_UNLOCKED;
+                bool glow = rarity < 10.0f && unlocked; // glow if less than 10% of players have it and you have it too
                 se_boxed_image_dual_label(achievement->title.c_str(),
                                           achievement->description.c_str(), ICON_FK_SPINNER, image,
-                                          0, uv0, uv1);
+                                          0, uv0, uv1, glow);
             }
         }
     }
@@ -778,6 +788,9 @@ void ra_achievement_list_t::initialize(ra_game_state_ptr game_state,
             buckets[i].achievements[j]->id = list->buckets[i].achievements[j]->id;
             buckets[i].achievements[j]->title = list->buckets[i].achievements[j]->title;
             buckets[i].achievements[j]->description = list->buckets[i].achievements[j]->description;
+            buckets[i].achievements[j]->percentage = list->buckets[i].achievements[j]->measured_percent;
+            buckets[i].achievements[j]->rarity = list->buckets[i].achievements[j]->rarity;
+            buckets[i].achievements[j]->rarity_hardcore = list->buckets[i].achievements[j]->rarity_hardcore;
 
             const rc_client_achievement_t* achievement = list->buckets[i].achievements[j];
             if (rc_client_achievement_get_image_url(achievement, achievement->state, &url[0],
@@ -1292,7 +1305,7 @@ bool retro_achievements_draw_settings(uint32_t* draw_checkboxes[5])
         }
         else
             snprintf(line2, 256, "%s", se_localize_and_cache("No Game Loaded"));
-        se_boxed_image_dual_label(line1, line2, ICON_FK_TROPHY, image, 0, offset1, offset2);
+        se_boxed_image_dual_label(line1, line2, ICON_FK_TROPHY, image, 0, offset1, offset2, false);
         if (se_button(ICON_FK_SIGN_OUT " Logout", ImVec2{0, 0}))
         {
             std::string path = se_get_pref_path();
