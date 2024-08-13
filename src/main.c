@@ -1837,12 +1837,16 @@ uint32_t retro_achievements_read_memory_callback(uint32_t address, uint8_t* buff
     const rc_memory_regions_t* regions = rc_console_memory_regions(RC_CONSOLE_GAMEBOY_ADVANCE);
     for (int i=0;i<regions->num_regions;i++) {
       const rc_memory_region_t* region = &regions->region[i];
-      if (address >= region->start_address && address <= region->end_address) {
+      if (address >= 0x048000U && address <= 0x057FFFU) { // handle eeprom region specially
+        for (int j=0;j<num_bytes;j++){
+          buffer[j]=core.gba.mem.cart_backup[address-0x048000U+j];
+        }
+      } else if (address >= region->start_address && address <= region->end_address) {
         for(int j=0;j<num_bytes;j++){
           buffer[j]=gba_read8(&core.gba,region->real_address+(address-region->start_address)+j);
         }
-        return num_bytes;
       }
+      return num_bytes;
     }
     return num_bytes;
   }else if(emu_state.system==SYSTEM_NDS){
