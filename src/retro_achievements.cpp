@@ -532,6 +532,7 @@ namespace
                     std::string("Leaderboard attempt started: ") + event->leaderboard->title;
                 notification.submessage = event->leaderboard->description;
                 notification.tile = game_state->game_image;
+                notification.start_time = se_time();
                 game_state->notifications.push_back(notification);
                 break;
             }
@@ -545,6 +546,7 @@ namespace
                     std::string("Leaderboard attempt failed: ") + event->leaderboard->title;
                 notification.submessage = event->leaderboard->description;
                 notification.tile = game_state->game_image;
+                notification.start_time = se_time();
                 game_state->notifications.push_back(notification);
                 break;
             }
@@ -558,6 +560,7 @@ namespace
                 notification.submessage = std::string(event->leaderboard->tracker_value) + " for " +
                                           event->leaderboard->title;
                 notification.tile = game_state->game_image;
+                notification.start_time = se_time();
                 game_state->notifications.push_back(notification);
                 break;
             }
@@ -650,6 +653,7 @@ namespace
                                           std::to_string(summary.num_core_achievements) +
                                           " achievements unlocked";
                 notification.tile = game_state->game_image;
+                notification.start_time = se_time();
                 game_state->notifications.push_back(notification);
                 break;
             }
