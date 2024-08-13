@@ -684,15 +684,16 @@ namespace
             type = http_request_e::POST;
         }
 
-        url += "?" + post_data;
         std::vector<std::pair<std::string, std::string>> headers;
 #ifndef EMSCRIPTEN
         // TODO(paris): When setting User-Agent from browser side, it sends a CORS
         // preflight request which is makes the request fail.
         headers.push_back({"User-Agent", "SkyEmu/4.0"});
 #endif
+        headers.push_back({"Content-Type", "application/x-www-form-urlencoded"});
+        headers.push_back({"Content-Length", std::to_string(post_data.size())});
 
-        https_request(type, url, {}, headers,
+        https_request(type, url, post_data, headers,
                       [callback, callback_data](const std::vector<uint8_t>& result) {
                           if (result.empty())
                           {
@@ -1424,7 +1425,7 @@ void retro_achievements_draw_notifications(float left, float top, float screen_w
         float image_height = screen_width * 0.05f * easing;
         float placard_width =
             padding_adj + screen_width * 0.30f * easing + padding_adj; // notifications that have the same width are more appealing
-        float wrap_width = placard_width - padding_adj * 2 - image_width;
+        float wrap_width = placard_width - padding_adj * 3 - image_width;
         float title_font_size = 0.02f * screen_width * easing;
         float submessage_font_size = 0.015f * screen_width * easing;
 

@@ -308,8 +308,9 @@ endif()
 
 if(ENABLE_RETRO_ACHIEVEMENTS)
   add_definitions(-DENABLE_RETRO_ACHIEVEMENTS=1)
-  add_definitions(-DRC_DISABLE_LUA)
   add_definitions(-DRC_CLIENT_SUPPORTS_HASH)
+  find_package(Lua 5.1 REQUIRED)
+  set(LINK_LIBS ${LINK_LIBS} ${LUA_LIBRARIES})
   set(RCHEEVOS_SRC src/rcheevos/src/rapi/rc_api_common.c
     src/rcheevos/src/rapi/rc_api_editor.c
     src/rcheevos/src/rapi/rc_api_info.c
