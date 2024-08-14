@@ -310,6 +310,9 @@ if(ENABLE_RETRO_ACHIEVEMENTS)
   add_definitions(-DENABLE_RETRO_ACHIEVEMENTS=1)
   add_definitions(-DRC_CLIENT_SUPPORTS_HASH)
   add_library(Lua STATIC src/lua/onelua.c)
+  if(IOS)
+    target_compile_definitions(Lua PRIVATE LUA_USE_IOS) # makes it so system is not used
+  endif()
   set_property(TARGET Lua PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
   set(LINK_LIBS ${LINK_LIBS} Lua)
   set(RCHEEVOS_SRC src/rcheevos/src/rapi/rc_api_common.c
