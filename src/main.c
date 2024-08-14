@@ -4445,7 +4445,7 @@ void se_update_glow(){
       glow_rays[i].angle -= 360;
     }
     glow_rays[i].distance += glow_rays[i].velocity;
-    if (glow_rays[i].distance < 20) {
+    if (glow_rays[i].distance < 30) {
       glow_rays[i].distance = 30;
       glow_rays[i].velocity = 0.1f + (float)(rand() % 10) / 10.0f;
     } else if (glow_rays[i].distance > 40) {
@@ -4456,8 +4456,8 @@ void se_update_glow(){
     if (glow_rays[i].alpha < 0.4f) {
       glow_rays[i].alpha = 0.4f;
       glow_rays[i].alpha_velocity = 0.0015f + (float)(rand() % 10) / 1000.0f;
-    } else if (glow_rays[i].alpha > 0.95f) {
-      glow_rays[i].alpha = 0.95f;
+    } else if (glow_rays[i].alpha > 0.55f) {
+      glow_rays[i].alpha = 0.55f;
       glow_rays[i].alpha_velocity = -0.0015f - (float)(rand() % 10) / 1000.0f;
     }
   }
@@ -4487,8 +4487,8 @@ void se_draw_glow(ImVec2 center){
 
     ImVec2 ray_center = center;
     ImVec2 target = {ray_center.x + distance_x, ray_center.y + distance_y};
-    ray_center.x += distance_x / 1.5;
-    ray_center.y += distance_y / 1.5;
+    ray_center.x += distance_x / 2;
+    ray_center.y += distance_y / 2;
 
     ImVec2 target_1 = {ray_center.x + distance_2 * cosf((angle + 70) * pi_180),
                             ray_center.y + distance_2 * sinf((angle + 70) * pi_180)};
@@ -4574,6 +4574,7 @@ void se_boxed_image_triple_label(const char * first_label, const char* second_la
   // ImDrawList_AddRect(ig, top_left, bottom_right, 0xff0000ff, 0, 0, 1.0f);
 
   igPushIDStr(second_label);
+  if (glow)se_draw_glow((ImVec2){screen_pos.x+box_w*0.5,screen_pos.y+box_h*0.5+padding});
   igSetCursorPosX(curr_pos.x+box_w+padding);
   igSetCursorPosY(curr_pos.y-padding);
   se_text("%s", first_label);
@@ -4597,7 +4598,6 @@ void se_boxed_image_triple_label(const char * first_label, const char* second_la
     }
     igPopStyleColor(1);
   }
-  if (glow)se_draw_glow((ImVec2){screen_pos.x+box_w*0.5,screen_pos.y+box_h*0.5+padding});
   igSetCursorPos(curr_pos);
   if(image.id != SG_INVALID_ID)igImageButton((ImTextureID)(intptr_t)image.id,(ImVec2){box_w,box_h},uv0,uv1,0,(ImVec4){1,1,1,1},(ImVec4){1,1,1,1});
   else se_text_centered_in_box((ImVec2){0,0}, (ImVec2){box_w,box_h},box);
@@ -8286,7 +8286,7 @@ static void init(void) {
     glow_rays[i].velocity = 0.1f + (float)(rand() % 100) / 100.0f;
     glow_rays[i].angle = (float)(rand() % 360);
     glow_rays[i].angle_velocity = 0.1f + (float)(rand() % 10) / 100.0f;
-    glow_rays[i].alpha = 0.5f + (float)(rand() % 5) / 10.0f;
+    glow_rays[i].alpha = 0.4f + (float)(rand() % 10) / 100.0f;
     glow_rays[i].alpha_velocity = 0.1f + (float)(rand() % 10) / 10.0f;
   }
 }
