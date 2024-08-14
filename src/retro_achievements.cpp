@@ -136,7 +136,7 @@ struct ra_game_state_t
 {
     ~ra_game_state_t();
 
-    atlas_tile_t* game_image;
+    atlas_tile_t* game_image = nullptr;
     std::vector<atlas_t*> atlases{};
     std::unordered_map<std::string, atlas_tile_t> image_cache{};
     ra_achievement_list_t achievement_list;
@@ -1095,12 +1095,13 @@ void retro_achievements_shutdown()
 
     rc_client_destroy(ra_state->rc_client);
 
+    ra_state->game_state.reset();
+
     for (auto& image : images_to_destroy)
     {
         sg_destroy_image(image);
     }
-
-    ra_state->game_state.reset();
+    images_to_destroy.clear();
 
     delete ra_state;
 
@@ -1219,14 +1220,6 @@ void retro_achievements_update_atlases()
         return; // probably a lot of outstanding requests hold the mutex, let's wait for them to
                 // finish before we try to lock ourselves to prevent stuttering
 
-    {
-        std::unique_lock<std::mutex> lock(global_cache_mutex);
-        for (auto& image : images_to_destroy)
-        {
-            sg_destroy_image(image);
-        }
-    }
-
     std::unique_lock<std::mutex> lock(ra_state->game_state->mutex);
 
     for (atlas_t* atlas : ra_state->game_state->atlases)
@@ -1235,7 +1228,8 @@ void retro_achievements_update_atlases()
         {
             if (atlas->image.id != SG_INVALID_ID)
             {
-                sg_destroy_image(atlas->image);
+                std::unique_lock<std::mutex> glock(global_cache_mutex);
+                images_to_destroy.push_back(atlas->image);
             }
             atlas->image.id = SG_INVALID_ID;
         }
@@ -1281,7 +1275,19 @@ void retro_achievements_update_atlases()
         atlas->resized = false;
     }
 }
-bool retro_achievements_has_game_loaded(){
+
+void retro_achievements_delete_retired_atlases()
+{
+    std::unique_lock<std::mutex> lock(global_cache_mutex);
+    for (auto& image : images_to_destroy)
+    {
+        sg_destroy_image(image);
+    }
+    images_to_destroy.clear();
+}
+
+bool retro_achievements_has_game_loaded()
+{
     return rc_client_get_game_info(ra_state->rc_client)!=NULL;
 }
 

@@ -7650,6 +7650,7 @@ static void frame(void) {
     se_emscripten_flush_fs();
     gui_state.last_saved_settings=gui_state.settings;
   }
+  retro_achievements_delete_retired_atlases();
 }
 void se_load_settings(){
   se_load_recent_games_list();

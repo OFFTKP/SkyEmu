@@ -43,6 +43,8 @@ const char* retro_achievements_get_login_error();
 
 void retro_achievements_update_atlases();
 
+void retro_achievements_delete_retired_atlases();
+
 void retro_achievements_keep_alive();
 
 void retro_achievements_draw_notifications(float left, float top, float screen_width);
