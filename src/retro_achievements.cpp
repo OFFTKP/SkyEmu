@@ -744,29 +744,32 @@ namespace
 
         std::unique_lock<std::mutex> lock(game_state->mutex);
         const rc_client_game_t* game = rc_client_get_game_info(ra_state->rc_client);
-        rc_client_user_game_summary_t summary;
-        rc_client_get_user_game_summary(ra_state->rc_client, &summary);
-        auto title = std::string("Playing ") + game->title;
-        auto description = std::to_string(summary.points_unlocked) + "/" +
-                           std::to_string(summary.points_core) + " points, " +
-                           std::to_string(summary.num_unlocked_achievements) + "/" +
-                           std::to_string(summary.num_core_achievements) + " achievements";
-        bool hardcore = rc_client_get_hardcore_enabled(ra_state->rc_client);
-        auto hardcore_str = hardcore ? "Hardcore mode" : "Softcore mode";
-        uint32_t hardcore_color = hardcore ? 0xff0000ff : 0xff00ff00; // TODO: make me nicer
-        sg_image image = {SG_INVALID_ID};
-        atlas_tile_t* tile = game_state->game_image;
-        ImVec2 uv0 = ImVec2{0, 0};
-        ImVec2 uv1 = ImVec2{1, 1};
-        if (tile)
+        if (game)
         {
-            image.id = tile->atlas_id;
-            uv0 = ImVec2{tile->x1, tile->y1};
-            uv1 = ImVec2{tile->x2, tile->y2};
+            rc_client_user_game_summary_t summary;
+            rc_client_get_user_game_summary(ra_state->rc_client, &summary);
+            auto title = std::string("Playing ") + game->title;
+            auto description = std::to_string(summary.points_unlocked) + "/" +
+                            std::to_string(summary.points_core) + " points, " +
+                            std::to_string(summary.num_unlocked_achievements) + "/" +
+                            std::to_string(summary.num_core_achievements) + " achievements";
+            bool hardcore = rc_client_get_hardcore_enabled(ra_state->rc_client);
+            auto hardcore_str = hardcore ? "Hardcore mode" : "Softcore mode";
+            uint32_t hardcore_color = hardcore ? 0xff0000ff : 0xff00ff00; // TODO: make me nicer
+            sg_image image = {SG_INVALID_ID};
+            atlas_tile_t* tile = game_state->game_image;
+            ImVec2 uv0 = ImVec2{0, 0};
+            ImVec2 uv1 = ImVec2{1, 1};
+            if (tile)
+            {
+                image.id = tile->atlas_id;
+                uv0 = ImVec2{tile->x1, tile->y1};
+                uv1 = ImVec2{tile->x2, tile->y2};
+            }
+            se_boxed_image_triple_label(title.c_str(), description.c_str(), hardcore_str, hardcore_color,
+                                    ICON_FK_GAMEPAD, image, 0, uv0, uv1, false);
+            igSeparator();
         }
-        se_boxed_image_triple_label(title.c_str(), description.c_str(), hardcore_str, hardcore_color,
-                                  ICON_FK_GAMEPAD, image, 0, uv0, uv1, false);
-        igSeparator();
         for (int i = 0; i < game_state->achievement_list.buckets.size(); i++)
         {
             if (game_state->achievement_list.buckets[i].achievements.empty())
