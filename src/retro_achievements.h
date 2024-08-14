@@ -33,6 +33,8 @@ void retro_achievements_draw_panel();
 
 atlas_tile_t* retro_achievements_get_game_image();
 
+atlas_tile_t* retro_achievements_get_user_image();
+
 void retro_achievements_login(const char* username, const char* password);
 
 bool retro_achievements_is_pending_login();

@@ -483,11 +483,15 @@ namespace
         delete game_state_ptr; // delete the pointer that was allocated to pass through ffi
     }
 
+    void retro_achievements_download_user_image(const std::string& url)
+    {
+        // TODO: implement me, requires generalizing atlas stuff
+    }
+
     void retro_achievements_login_callback(int result, const char* error_message,
                                            rc_client_t* client, void* userdata)
     {
         static char buffer[256];
-        // TODO: show cool "logged in" banner or something
         ra_state_t* state = (ra_state_t*)userdata;
         const rc_client_user_t* user = rc_client_get_user_info(client);
 
@@ -504,6 +508,13 @@ namespace
             sb_save_file_data(path.c_str(), (const uint8_t*)data.data(), data.size());
             se_emscripten_flush_fs();
             ra_state->error_message.store(nullptr);
+
+            std::string url;
+            url.resize(256);
+            if (rc_client_user_get_image_url(user, &url[0], url.size()) == RC_OK)
+            {
+                retro_achievements_download_user_image(url);
+            }
         } else {
             snprintf(buffer, sizeof(buffer), "Login failed: %s", error_message);
             ra_state->error_message.store(buffer);
@@ -727,16 +738,41 @@ namespace
 
     void retro_achievements_draw_achievements()
     {
-        if (!ra_state->game_state)
+        ra_game_state_ptr game_state = ra_state->game_state;
+        if (!game_state)
             return;
 
-        std::unique_lock<std::mutex> lock(ra_state->game_state->mutex);
-        for (int i = 0; i < ra_state->game_state->achievement_list.buckets.size(); i++)
+        std::unique_lock<std::mutex> lock(game_state->mutex);
+        const rc_client_game_t* game = rc_client_get_game_info(ra_state->rc_client);
+        rc_client_user_game_summary_t summary;
+        rc_client_get_user_game_summary(ra_state->rc_client, &summary);
+        auto title = std::string("Playing ") + game->title;
+        auto description = std::to_string(summary.points_unlocked) + "/" +
+                           std::to_string(summary.points_core) + " points, " +
+                           std::to_string(summary.num_unlocked_achievements) + "/" +
+                           std::to_string(summary.num_core_achievements) + " achievements";
+        bool hardcore = rc_client_get_hardcore_enabled(ra_state->rc_client);
+        auto hardcore_str = hardcore ? "Hardcore mode" : "Softcore mode";
+        uint32_t hardcore_color = hardcore ? 0xff0000ff : 0xff00ff00; // TODO: make me nicer
+        sg_image image = {SG_INVALID_ID};
+        atlas_tile_t* tile = game_state->game_image;
+        ImVec2 uv0 = ImVec2{0, 0};
+        ImVec2 uv1 = ImVec2{1, 1};
+        if (tile)
         {
-            if (ra_state->game_state->achievement_list.buckets[i].achievements.empty())
+            image.id = tile->atlas_id;
+            uv0 = ImVec2{tile->x1, tile->y1};
+            uv1 = ImVec2{tile->x2, tile->y2};
+        }
+        se_boxed_image_triple_label(title.c_str(), description.c_str(), hardcore_str, hardcore_color,
+                                  ICON_FK_GAMEPAD, image, 0, uv0, uv1, false);
+        igSeparator();
+        for (int i = 0; i < game_state->achievement_list.buckets.size(); i++)
+        {
+            if (game_state->achievement_list.buckets[i].achievements.empty())
                 continue;
 
-            ra_bucket_t* bucket = &ra_state->game_state->achievement_list.buckets[i];
+            ra_bucket_t* bucket = &game_state->achievement_list.buckets[i];
             std::string label = category_to_icon(bucket->bucket_id) + " " +
                                 se_localize_and_cache(bucket->label.c_str());
             se_section("%s", label.c_str());
@@ -1209,6 +1245,11 @@ atlas_tile_t* retro_achievements_get_game_image()
         return nullptr;
 
     return game_state->game_image;
+}
+
+atlas_tile_t* retro_achievements_get_user_image()
+{
+    return nullptr;
 }
 
 void retro_achievements_update_atlases()
