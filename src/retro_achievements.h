@@ -9,17 +9,11 @@
 #define RETRO_ACHIEVEMENTS
 #include <stdint.h>
 #include <stdbool.h>
+#include "atlas.h"
 
 #define SE_RC_BUFFER_SIZE (256*1024)
 
 #ifdef ENABLE_RETRO_ACHIEVEMENTS
-
-typedef struct {
-    uint32_t atlas_id;
-    uint32_t width, height;
-    float x1, y1;
-    float x2, y2;
-} atlas_tile_t;
 
 void retro_achievements_initialize(void* emu_state, bool hardcore, bool is_mobile);
 

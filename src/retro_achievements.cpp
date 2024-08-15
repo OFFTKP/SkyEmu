@@ -69,13 +69,6 @@ struct ra_game_state_t;
 
 using ra_game_state_ptr = std::shared_ptr<ra_game_state_t>;
 
-struct downloaded_image_t
-{
-    uint8_t* data; // always RGBA
-    int width;
-    int height;
-};
-
 struct ra_achievement_t
 {
     atlas_tile_t* tile = nullptr;
