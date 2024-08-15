@@ -1,5 +1,9 @@
-#include "sokol_gfx.h"
 #include "atlas.h"
+#include "https.hpp"
+#include "sokol_gfx.h"
+#include "stb_image.h"
+#include <algorithm>
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -11,32 +15,53 @@
 }
 
 struct cached_image_t {
-    const uint8_t* data;
+    const uint8_t* data = nullptr;
     uint32_t width, height;
 };
 
+struct atlas_tile_t {
+    std::atomic_uint32_t atlas_id;
+    std::atomic<float> x1, y1, x2, y2;
+};
+
 std::mutex image_cache_mutex;
-std::unordered_map<std::string, cached_image_t> image_cache;
+std::unordered_map<std::string, cached_image_t*> image_cache;
+
+std::mutex atlas_maps_mutex;
+std::vector<atlas_map_t*> atlas_maps;
 
 struct atlas_t {
     atlas_t(uint32_t tile_width, uint32_t tile_height);
     ~atlas_t();
 
-    atlas_tile_t* add_image(cached_image_t* image);
+    atlas_tile_t* get_tile(const std::string& url) {
+        std::unique_lock<std::mutex> lock(mutex);
+        if (images.find(url) == images.end()) {
+            atlas_error("Tile not found");
+        }
+
+        atlas_tile_t* tile = images[url];
+        return tile;
+    }
+    bool has_tile(const std::string& url) {
+        std::unique_lock<std::mutex> lock(mutex);
+        return images.find(url) != images.end();
+    }
+    void add_tile(const std::string& url, atlas_tile_t* tile, cached_image_t* cached_image);
     void upload();
 
 private:
-    void copy_to_data(cached_image_t* image);
+    void copy_to_data(atlas_tile_t* tile, cached_image_t* image);
 
     const uint32_t tile_width, tile_height;
 
     std::mutex mutex;
-    sg_image image;
+    sg_image atlas_image;
     uint32_t atlas_dimension;
     uint32_t offset_x, offset_y;
     std::vector<uint8_t> data;
-    std::unordered_map<cached_image_t*, atlas_tile_t*> images;
-    std::vector<cached_image_t*> images_to_add;
+    std::unordered_map<std::string, atlas_tile_t*> images;
+    std::vector<std::string> images_to_add;
     bool dirty;   // new data needs to be uploaded to the GPU
     bool resized; // atlas needs to be destroyed and created at new size
 
@@ -44,16 +69,33 @@ private:
 };
 
 struct atlas_map_t {
-    atlas_tile_t* add_image_from_url(const char* url);
-    atlas_tile_t* add_image_from_path(const char* path);
+    atlas_tile_t* add_tile_from_url(const char* url);
+    atlas_tile_t* add_tile_from_path(const char* path);
+    void upload_all();
+
+    std::atomic_int requests = {0};
 
 private:
+    atlas_t* get_atlas(uint32_t tile_width, uint32_t tile_height) {
+        std::unique_lock<std::mutex> lock(atlases_mutex);
+        uint32_t key = tile_width << 16 | tile_height;
+
+        atlas_t* atlas = atlases[key];
+
+        if (atlas == nullptr) {
+            atlas = new atlas_t(tile_width, tile_height);
+            atlases[key] = atlas;
+        }
+
+        return atlas;
+    }
+
     std::mutex atlases_mutex;
-    std::vector<atlas_t*> atlases;
+    std::unordered_map<uint32_t, atlas_t*> atlases;
 };
 
 atlas_t::atlas_t(uint32_t tile_width, uint32_t tile_height) : tile_width(tile_width), tile_height(tile_height) {
-    image.id = SG_INVALID_ID;
+    atlas_image.id = SG_INVALID_ID;
     offset_x = 0;
     offset_y = 0;
     dirty = false;
@@ -68,7 +110,15 @@ atlas_t::atlas_t(uint32_t tile_width, uint32_t tile_height) : tile_width(tile_wi
     data.resize(atlas_dimension * atlas_dimension * 4);
 }
 
-void atlas_t::copy_to_data(cached_image_t* cached_image) {
+void atlas_t::copy_to_data(atlas_tile_t* tile, cached_image_t* cached_image) {
+    if (tile == nullptr) {
+        atlas_error("Tile is null");
+    }
+
+    if (cached_image->data == nullptr) {
+        atlas_error("Cached image data is null");
+    }
+
     if (cached_image->width != tile_width || cached_image->height != tile_height) {
         atlas_error("Image dimensions do not match atlas tile dimensions");
     }
@@ -82,10 +132,6 @@ void atlas_t::copy_to_data(cached_image_t* cached_image) {
     if (offset_x + tile_width > atlas_dimension) {
         offset_x = 0;
         offset_y += tile_height + padding;
-
-        if (offset_y + tile_height > atlas_dimension) {
-            atlas_error("Atlas is full somehow");
-        }
     }
 
     for (int y = 0; y < tile_height; y++) {
@@ -100,20 +146,14 @@ void atlas_t::copy_to_data(cached_image_t* cached_image) {
         }
     }
 
-    auto it = images.find(cached_image);
-    if (it == images.end()) {
-        atlas_error("Image not found in atlas");
-    }
-
-    atlas_tile_t* tile = it->second;
-    tile->atlas_id = image.id;
+    tile->atlas_id = atlas_image.id;
     tile->x1 = (float)tile_offset_x / atlas_dimension;
     tile->y1 = (float)tile_offset_y / atlas_dimension;
     tile->x2 = (float)(tile_offset_x + tile_width) / atlas_dimension;
     tile->y2 = (float)(tile_offset_y + tile_height) / atlas_dimension;
 }
 
-atlas_tile_t* atlas_t::add_image(cached_image_t* image_to_add) {
+void atlas_t::add_tile(const std::string& url, atlas_tile_t* tile, cached_image_t* cached_image) {
     std::unique_lock<std::mutex> lock(mutex);
 
     // These are the dimensions that would occur after adding a tile
@@ -140,22 +180,19 @@ atlas_tile_t* atlas_t::add_image(cached_image_t* image_to_add) {
     float current_x = offset_x;
     float current_y = offset_y;
 
-    atlas_tile_t* tile = new atlas_tile_t();
-    images[image_to_add] = tile;
+    images[url] = tile;
 
-    copy_to_data(image_to_add);
-
-    return tile;
+    copy_to_data(tile, cached_image);
 }
 
 void atlas_t::upload() {
     std::unique_lock<std::mutex> lock(mutex);
     if (resized) {
-        sg_destroy_image(image);
-        image.id = SG_INVALID_ID;
+        sg_destroy_image(atlas_image);
+        atlas_image.id = SG_INVALID_ID;
     }
 
-    if (image.id == SG_INVALID_ID) {
+    if (atlas_image.id == SG_INVALID_ID) {
         sg_image_desc desc = {0};
         desc.type = SG_IMAGETYPE_2D;
         desc.render_target = false;
@@ -176,15 +213,26 @@ void atlas_t::upload() {
         desc.min_lod = 0.0f;
         desc.max_lod = 1e9f;
 
-        image = sg_make_image(desc);
+        atlas_image = sg_make_image(desc);
 
         if (resized) {
-            for (cached_image_t* image_to_add : images_to_add) {
-                copy_to_data(image_to_add);
+            {
+                std::unique_lock<std::mutex> lock(image_cache_mutex);
+                for (const std::string& image_url : images_to_add) {
+                    cached_image_t* cached_image = image_cache[image_url];
+                    atlas_tile_t* tile = images[image_url];
+                    copy_to_data(tile, cached_image);
+                }
             }
 
             images_to_add.clear();
+
             resized = false;
+        }
+
+        for (auto& pair : images) {
+            atlas_tile_t* tile = pair.second;
+            tile->atlas_id = atlas_image.id;
         }
     }
 
@@ -192,20 +240,129 @@ void atlas_t::upload() {
         sg_image_data sg_data = {0};
         sg_data.subimage[0][0].ptr = data.data();
         sg_data.subimage[0][0].size = data.size();
-        sg_update_image(image, sg_data);
+        sg_update_image(atlas_image, sg_data);
         dirty = false;
     }
 }
 
-atlas_tile_t* atlas_map_t::add_image_from_url(const char* url) {
+atlas_tile_t* atlas_map_t::add_tile_from_url(const char* url) {
     const std::string url_str(url);
-    
+
+    {
+        std::unique_lock<std::mutex> lock(image_cache_mutex);
+        if (image_cache.find(url_str) != image_cache.end()) {
+            cached_image_t* cached_image = image_cache[url_str];
+            atlas_t* atlas = get_atlas(cached_image->width, cached_image->height);
+            atlas_tile_t* tile = nullptr;
+            if (atlas->has_tile(url_str)) {
+                atlas->get_tile(url_str);
+            } else {
+                tile = new atlas_tile_t();
+                atlas->add_tile(url_str, tile, cached_image);
+            }
+            return tile;
+        }
+    }
+
+    atlas_tile_t* tile = new atlas_tile_t();
+
+    requests++;
+    https_request(http_request_e::GET, url_str, {}, {}, [this, url_str, tile] (const std::vector<uint8_t>& result) {
+        if (result.empty()) {
+            printf("Failed to download image for atlas\n");
+            delete tile;
+            requests--;
+            return;
+        }
+
+        cached_image_t* cached_image = new cached_image_t();
+        int width, height;
+        cached_image->data = stbi_load_from_memory(result.data(), result.size(), &width, &height, NULL, 4);
+        cached_image->width = width;
+        cached_image->height = height;
+
+        if (!cached_image->data)
+        {
+            printf("Failed to load image for atlas\n");
+            delete tile;
+            delete cached_image;
+        } else {
+            {
+                std::unique_lock<std::mutex> lock(image_cache_mutex);
+                image_cache[url_str] = cached_image;
+            }
+
+            atlas_t* atlas = get_atlas(cached_image->width, cached_image->height);
+            atlas->add_tile(url_str, tile, cached_image);
+        }
+
+        requests--;
+        printf("Outstanding requests: %d\n", requests.load());
+    });
+
+    return tile;
+}
+
+atlas_tile_t* atlas_map_t::add_tile_from_path(const char* path) {
+    atlas_error("Not implemented");
+    return nullptr;
+}
+
+void atlas_map_t::upload_all() {
+    std::unique_lock<std::mutex> lock(atlases_mutex);
+    for (auto& pair : atlases) {
+        pair.second->upload();
+    }
 }
 
 atlas_map_t* atlas_create_map() {
-    return new atlas_map_t();
+    atlas_map_t* map = new atlas_map_t();
+    {
+        std::unique_lock<std::mutex> lock(atlas_maps_mutex);
+        atlas_maps.push_back(map);
+    }
+    return map;
 }
 
 void atlas_destroy_map(atlas_map_t* map) {
+    {
+        std::unique_lock<std::mutex> lock(atlas_maps_mutex);
+        auto it = std::find(atlas_maps.begin(), atlas_maps.end(), map);
+        if (it != atlas_maps.end()) {
+            atlas_maps.erase(it);
+        }
+    }
     delete map;
+}
+
+atlas_tile_t* atlas_add_tile_from_url(atlas_map_t* map, const char* url) {
+    return map->add_tile_from_url(url);
+}
+
+atlas_tile_t* atlas_add_tile_from_path(atlas_map_t* map, const char* path) {
+    atlas_error("Not implemented");
+    return nullptr;
+}
+
+void atlas_upload_all() {
+    std::unique_lock<std::mutex> lock(atlas_maps_mutex);
+    for (atlas_map_t* map : atlas_maps) {
+        if (map->requests > 0) {
+            continue; // probably a lot of outstanding requests and we don't wanna update too often
+        }
+
+        map->upload_all();
+    }
+}
+
+uint32_t atlas_get_tile_id(atlas_tile_t* tile) {
+    if (tile == nullptr) {
+        return 0;
+    }
+
+    return tile->atlas_id;
+}
+
+atlas_uvs_t atlas_get_tile_uvs(atlas_tile_t* tile) {
+    return {tile->x1, tile->y1, tile->x2, tile->y2};
 }

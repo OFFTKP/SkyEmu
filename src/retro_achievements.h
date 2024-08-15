@@ -25,9 +25,9 @@ void retro_achievements_frame();
 
 void retro_achievements_draw_panel();
 
-atlas_tile_t* retro_achievements_get_game_image();
+struct atlas_tile_t* retro_achievements_get_game_image();
 
-atlas_tile_t* retro_achievements_get_user_image();
+struct atlas_tile_t* retro_achievements_get_user_image();
 
 void retro_achievements_login(const char* username, const char* password);
 
@@ -36,10 +36,6 @@ bool retro_achievements_is_pending_login();
 struct rc_client_t* retro_achievements_get_client();
 
 const char* retro_achievements_get_login_error();
-
-void retro_achievements_update_atlases();
-
-void retro_achievements_delete_retired_atlases();
 
 void retro_achievements_keep_alive();
 
