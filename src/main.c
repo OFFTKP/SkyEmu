@@ -7333,7 +7333,8 @@ static void frame(void) {
       gui_state.menubar_hide_timer=se_time();
     }
     #ifdef ENABLE_RETRO_ACHIEVEMENTS
-    if(gui_state.retro_achievements_sidebar_open){
+    bool logged_in = rc_client_get_user_info(retro_achievements_get_client());
+    if(gui_state.retro_achievements_sidebar_open&&logged_in){
       igSetNextWindowPos((ImVec2){screen_x,menu_height}, ImGuiCond_Always, (ImVec2){0,0});
       igSetNextWindowSize((ImVec2){sidebar_w, (gui_state.screen_height-menu_height*se_dpi_scale())/se_dpi_scale()}, ImGuiCond_Always);
       igBegin(se_localize_and_cache(ICON_FK_TROPHY " RetroAchievements"),&gui_state.retro_achievements_sidebar_open, ImGuiWindowFlags_NoCollapse|ImGuiWindowFlags_NoResize);
