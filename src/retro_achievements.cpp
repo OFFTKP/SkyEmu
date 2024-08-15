@@ -147,6 +147,8 @@ struct ra_state_t
     std::atomic<const char*> error_message = { nullptr };
     sb_emu_state_t* emu_state = nullptr;
     rc_client_t* rc_client = nullptr;
+    atlas_map_t* user_image_atlas = nullptr;
+    atlas_tile_t* user_image = nullptr;
 
     std::atomic_bool pending_login = { false };
 
@@ -383,11 +385,6 @@ namespace
         loading_game = false;
     }
 
-    void retro_achievements_download_user_image(const std::string& url)
-    {
-        // TODO: implement me, requires generalizing atlas stuff
-    }
-
     void retro_achievements_login_callback(int result, const char* error_message,
                                            rc_client_t* client, void* userdata)
     {
@@ -413,7 +410,7 @@ namespace
             url.resize(256);
             if (rc_client_user_get_image_url(user, &url[0], url.size()) == RC_OK)
             {
-                retro_achievements_download_user_image(url);
+                ra_state->user_image = atlas_add_tile_from_url(ra_state->user_image_atlas, url.c_str());
             }
         } else {
             snprintf(buffer, sizeof(buffer), "Login failed: %s", error_message);
@@ -801,6 +798,7 @@ void retro_achievements_initialize(void* state, bool hardcore, bool is_mobile)
     ra_state = new ra_state_t((sb_emu_state_t*)state);
     ra_state->rc_client = rc_client_create(retro_achievements_read_memory_callback,
                                            retro_achievements_server_callback);
+    ra_state->user_image_atlas = atlas_create_map();
 
     rc_client_enable_logging(ra_state->rc_client, RC_CLIENT_LOG_LEVEL_VERBOSE,
                              retro_achievements_log_callback);
@@ -973,7 +971,7 @@ atlas_tile_t* retro_achievements_get_game_image()
 
 atlas_tile_t* retro_achievements_get_user_image()
 {
-    return nullptr;
+    return ra_state->user_image;
 }
 
 bool retro_achievements_has_game_loaded()
