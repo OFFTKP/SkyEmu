@@ -59,6 +59,8 @@ struct ra_game_state_t;
 
 using ra_game_state_ptr = std::shared_ptr<ra_game_state_t>;
 
+std::atomic_bool loading_game = { false };
+
 struct ra_achievement_t
 {
     atlas_tile_t* tile = nullptr;
@@ -378,6 +380,7 @@ namespace
         }
 
         delete game_state_ptr; // delete the pointer that was allocated to pass through ffi
+        loading_game = false;
     }
 
     void retro_achievements_download_user_image(const std::string& url)
@@ -530,6 +533,7 @@ namespace
                 ra_game_state_ptr game_state = ra_state->game_state;
                 game_state->progress_indicator.show = true;
                 retro_achievements_progress_indicator_updated(game_state, event->achievement);
+                break;
             }
             case RC_CLIENT_EVENT_ACHIEVEMENT_PROGRESS_INDICATOR_UPDATE:
             {
@@ -879,11 +883,16 @@ bool retro_achievements_load_game()
         return false; // not logged in or login in progress, in which case the game will be loaded
                      // when the login is done
 
+    if (loading_game)
+        return false;
+
     // the old one will be destroyed when the last reference is gone
     ra_state->game_state.reset(new ra_game_state_t());
 
     // We need to create a shared_ptr*, so we can pass it to the C api.
     ra_game_state_ptr* game_state = new ra_game_state_ptr(ra_state->game_state);
+
+    loading_game = true;
 
     switch (ra_state->emu_state->system)
     {

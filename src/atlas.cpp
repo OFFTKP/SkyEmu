@@ -6,6 +6,7 @@
 #include <atomic>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -29,6 +30,9 @@ std::unordered_map<std::string, cached_image_t*> image_cache;
 
 std::mutex atlas_maps_mutex;
 std::vector<atlas_map_t*> atlas_maps;
+
+std::mutex to_delete_mutex;
+std::vector<sg_image> images_to_delete;
 
 struct atlas_t {
     atlas_t(uint32_t tile_width, uint32_t tile_height);
@@ -71,6 +75,7 @@ private:
 struct atlas_map_t {
     atlas_tile_t* add_tile_from_url(const char* url);
     atlas_tile_t* add_tile_from_path(const char* path);
+    void wait_all();
     void upload_all();
 
     std::atomic_int requests = {0};
@@ -91,6 +96,7 @@ private:
     }
 
     std::mutex atlases_mutex;
+    std::mutex adding_mutex;
     std::unordered_map<uint32_t, atlas_t*> atlases;
 };
 
@@ -108,6 +114,15 @@ atlas_t::atlas_t(uint32_t tile_width, uint32_t tile_height) : tile_width(tile_wi
     }
 
     data.resize(atlas_dimension * atlas_dimension * 4);
+}
+
+atlas_t::~atlas_t() {
+    for (auto& pair : images) {
+        delete pair.second;
+    }
+
+    std::unique_lock<std::mutex> lock(to_delete_mutex);
+    images_to_delete.push_back(atlas_image);
 }
 
 void atlas_t::copy_to_data(atlas_tile_t* tile, cached_image_t* cached_image) {
@@ -246,20 +261,28 @@ void atlas_t::upload() {
 }
 
 atlas_tile_t* atlas_map_t::add_tile_from_url(const char* url) {
+    std::unique_lock<std::mutex> lock(adding_mutex);
     const std::string url_str(url);
 
     {
         std::unique_lock<std::mutex> lock(image_cache_mutex);
         if (image_cache.find(url_str) != image_cache.end()) {
             cached_image_t* cached_image = image_cache[url_str];
+            lock.unlock();
+
             atlas_t* atlas = get_atlas(cached_image->width, cached_image->height);
             atlas_tile_t* tile = nullptr;
             if (atlas->has_tile(url_str)) {
-                atlas->get_tile(url_str);
+                tile = atlas->get_tile(url_str);
             } else {
                 tile = new atlas_tile_t();
                 atlas->add_tile(url_str, tile, cached_image);
             }
+
+            if (tile == nullptr) {
+                atlas_error("Tile is null");
+            }
+
             return tile;
         }
     }
@@ -297,15 +320,24 @@ atlas_tile_t* atlas_map_t::add_tile_from_url(const char* url) {
         }
 
         requests--;
-        printf("Outstanding requests: %d\n", requests.load());
     });
 
     return tile;
 }
 
 atlas_tile_t* atlas_map_t::add_tile_from_path(const char* path) {
+    std::unique_lock<std::mutex> lock(adding_mutex);
     atlas_error("Not implemented");
     return nullptr;
+}
+
+void atlas_map_t::wait_all() {
+    // this mutex solely exists to wait for the add_* functions to finish and begin their requests
+    // it's realistically very unlikely anything bad would happen without it but possible
+    std::unique_lock<std::mutex> lock(adding_mutex);
+    while (requests > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    }
 }
 
 void atlas_map_t::upload_all() {
@@ -332,10 +364,19 @@ void atlas_destroy_map(atlas_map_t* map) {
             atlas_maps.erase(it);
         }
     }
-    delete map;
+
+    std::thread delete_thread([map] {
+        map->wait_all();
+        delete map;
+    });
+    delete_thread.detach();
 }
 
 atlas_tile_t* atlas_add_tile_from_url(atlas_map_t* map, const char* url) {
+    if (map == nullptr) {
+        atlas_error("Map is null");
+    }
+
     return map->add_tile_from_url(url);
 }
 
@@ -353,6 +394,13 @@ void atlas_upload_all() {
 
         map->upload_all();
     }
+    lock.unlock();
+
+    std::unique_lock<std::mutex> dlock(to_delete_mutex);
+    for (sg_image image : images_to_delete) {
+        sg_destroy_image(image);
+    }
+    images_to_delete.clear();       
 }
 
 uint32_t atlas_get_tile_id(atlas_tile_t* tile) {
